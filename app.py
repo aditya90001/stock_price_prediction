@@ -17,7 +17,7 @@ model = load_model('stock_dl_model.h5')
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        stock = request.form.get('stock')
+        stock = request.form.get('ticker')
         if not stock:
             stock = 'POWERGRID.NS'  # Default stock if none is entered
         
@@ -122,5 +122,6 @@ def index():
 def download_file(filename):
     return send_file(f"static/{filename}", as_attachment=True)
 
-if __name__ == '__main__':
-    app.run(debug=True)
+import os
+port = int(os.environ.get("PORT", 5000))
+app.run(host="0.0.0.0", port=port, debug=True)

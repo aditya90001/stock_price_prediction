@@ -1,132 +1,115 @@
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Disable GPU (Render doesn't have one)
-
 from fastapi import FastAPI, Form
 from fastapi.responses import JSONResponse, FileResponse
 import yfinance as yf
-import pandas as pd
 import numpy as np
-import datetime as dt
+import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import LSTM, Dense
-import warnings
+from keras.models import load_model
+import os
 
-warnings.filterwarnings("ignore")
+app = FastAPI(title="Stock Price Prediction API", version="2.0")
 
-app = FastAPI(title="Stock Price Prediction API", version="1.0")
+# Load the trained LSTM model
+MODEL_PATH = "stock_dl_model.h5"
+if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError("Model file 'stock_dl_model.h5' not found in project directory.")
+model = load_model(MODEL_PATH)
 
-MODEL_DIR = "models"
-CHART_DIR = "charts"
-os.makedirs(MODEL_DIR, exist_ok=True)
-os.makedirs(CHART_DIR, exist_ok=True)
-
+# Folder for charts
+os.makedirs("charts", exist_ok=True)
 
 @app.get("/")
 def home():
-    return {
-        "message": "Welcome to the Stock Prediction API 🚀",
-        "usage": {
-            "POST /analyze_stock": "Predict next 60 days for given stock symbol (e.g. TCS.NS)",
-            "GET /download_chart/{stock}/{chart_type}": "Download chart - chart_type = 'prediction' or 'ema'",
-        },
-    }
+    return {"message": "Welcome to Stock Price Prediction API! Use /analyze_stock endpoint to predict."}
 
 
 @app.post("/analyze_stock")
 def analyze_stock(stock: str = Form(...)):
     try:
-        # Fetch data for last 3 years
-        end = dt.datetime.now()
-        start = end - dt.timedelta(days=3 * 365)
-        data = yf.download(stock, start=start, end=end)
+        # Fetch last 2 years of stock data
+        data = yf.download(stock, period="2y")
+        if data.empty:
+            return JSONResponse(status_code=400, content={"error": "Invalid stock symbol or no data found."})
 
-        if data.empty or "Close" not in data.columns:
-            return JSONResponse(status_code=400, content={"error": "Invalid stock symbol or no data available"})
-
-        # Save raw CSV
-        csv_path = f"{CHART_DIR}/{stock}.csv"
-        data.to_csv(csv_path)
-
-        # Create EMA charts
-        data["EMA20"] = data["Close"].ewm(span=20, adjust=False).mean()
-        data["EMA50"] = data["Close"].ewm(span=50, adjust=False).mean()
-        plt.figure(figsize=(10, 6))
-        plt.plot(data["Close"], label="Close", color="blue")
-        plt.plot(data["EMA20"], label="EMA 20", color="red")
-        plt.plot(data["EMA50"], label="EMA 50", color="green")
-        plt.title(f"{stock} - EMA Chart")
-        plt.xlabel("Date")
-        plt.ylabel("Price")
-        plt.legend()
-        ema_path = f"{CHART_DIR}/{stock}_ema.png"
-        plt.savefig(ema_path)
-        plt.close()
-
-        # Prepare data for LSTM
-        close_data = data[["Close"]].values
+        data = data[['Close']]
         scaler = MinMaxScaler(feature_range=(0, 1))
-        scaled_data = scaler.fit_transform(close_data)
+        scaled_data = scaler.fit_transform(data)
 
-        seq_len = 60
-        x_train, y_train = [], []
-        for i in range(seq_len, len(scaled_data)):
-            x_train.append(scaled_data[i - seq_len:i])
-            y_train.append(scaled_data[i])
-        x_train, y_train = np.array(x_train), np.array(y_train)
-
-        model_path = os.path.join(MODEL_DIR, f"{stock}.h5")
-
-        # Load model if exists, else train
-        if os.path.exists(model_path):
-            model = load_model(model_path)
-        else:
-            model = Sequential([
-                LSTM(50, return_sequences=True, input_shape=(x_train.shape[1], 1)),
-                LSTM(50, return_sequences=False),
-                Dense(25),
-                Dense(1)
-            ])
-            model.compile(optimizer="adam", loss="mean_squared_error")
-            model.fit(x_train, y_train, epochs=1, batch_size=32, verbose=0)
-            model.save(model_path)
+        # Prepare last 60 days for input
+        last_60_days = scaled_data[-60:]
+        current_input = last_60_days.reshape(1, 60, 1)
 
         # Predict next 60 days
-        last_60_days = scaled_data[-seq_len:]
-        future_input = last_60_days.reshape(1, seq_len, 1)
-        predictions = []
+        future_predictions = []
+        for i in range(60):
+            next_pred = model.predict(current_input, verbose=0)
+            future_predictions.append(next_pred[0, 0])
+            current_input = np.append(current_input[:, 1:, :], [[next_pred]], axis=1)
 
-        for _ in range(60):
-            pred = model.predict(future_input, verbose=0)
-            predictions.append(pred[0, 0])
-            future_input = np.append(future_input[:, 1:, :], [[pred]], axis=1)
+        # Inverse transform predictions
+        future_predictions = scaler.inverse_transform(np.array(future_predictions).reshape(-1, 1))
 
-        predictions = scaler.inverse_transform(np.array(predictions).reshape(-1, 1))
+        # Create future dates
+        last_date = data.index[-1]
+        future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=60)
 
-        future_dates = pd.date_range(end + dt.timedelta(days=1), periods=60)
-        future_df = pd.DataFrame({"Date": future_dates, "Predicted_Close": predictions.flatten()})
+        # Combine predictions into DataFrame
+        pred_df = pd.DataFrame({'Date': future_dates, 'Predicted Close': future_predictions.flatten()})
+        pred_df.set_index('Date', inplace=True)
 
-        # Plot prediction chart
+        # === CHARTS ===
         plt.figure(figsize=(10, 6))
-        plt.plot(data.index, data["Close"], label="Historical Close")
-        plt.plot(future_df["Date"], future_df["Predicted_Close"], label="Predicted Next 60 Days", color="red")
-        plt.title(f"{stock} - 60-Day Prediction")
-        plt.xlabel("Date")
-        plt.ylabel("Price")
+        plt.plot(data['Close'], label='Historical Close Price', color='blue')
+        plt.plot(pred_df['Predicted Close'], label='Predicted Next 60 Days', color='orange')
+        plt.title(f'{stock} Stock Price Prediction for Next 60 Days')
+        plt.xlabel('Date')
+        plt.ylabel('Price (INR)')
         plt.legend()
-        pred_path = f"{CHART_DIR}/{stock}_prediction.png"
-        plt.savefig(pred_path)
+        plt.grid(True)
+        plt.tight_layout()
+
+        prediction_chart = f"charts/{stock}_prediction.png"
+        plt.savefig(prediction_chart)
+        plt.close()
+
+        # === EMA 20 & 50 CHART ===
+        data['EMA20'] = data['Close'].ewm(span=20, adjust=False).mean()
+        data['EMA50'] = data['Close'].ewm(span=50, adjust=False).mean()
+        plt.figure(figsize=(10, 6))
+        plt.plot(data['Close'], label='Close', color='blue')
+        plt.plot(data['EMA20'], label='EMA 20', color='orange')
+        plt.plot(data['EMA50'], label='EMA 50', color='green')
+        plt.title(f'{stock} - EMA 20 & EMA 50')
+        plt.legend()
+        plt.tight_layout()
+
+        ema_20_50_chart = f"charts/{stock}_ema_20_50.png"
+        plt.savefig(ema_20_50_chart)
+        plt.close()
+
+        # === EMA 100 & 200 CHART ===
+        data['EMA100'] = data['Close'].ewm(span=100, adjust=False).mean()
+        data['EMA200'] = data['Close'].ewm(span=200, adjust=False).mean()
+        plt.figure(figsize=(10, 6))
+        plt.plot(data['Close'], label='Close', color='blue')
+        plt.plot(data['EMA100'], label='EMA 100', color='purple')
+        plt.plot(data['EMA200'], label='EMA 200', color='red')
+        plt.title(f'{stock} - EMA 100 & EMA 200')
+        plt.legend()
+        plt.tight_layout()
+
+        ema_100_200_chart = f"charts/{stock}_ema_100_200.png"
+        plt.savefig(ema_100_200_chart)
         plt.close()
 
         return {
-            "message": f"Analysis complete for {stock}",
-            "available_charts": ["prediction", "ema"],
-            "download_endpoints": {
-                "prediction_chart": f"/download_chart/{stock}/prediction",
-                "ema_chart": f"/download_chart/{stock}/ema",
+            "message": f"Successfully generated 60-day prediction for {stock}",
+            "charts": {
+                "prediction": f"/download_chart/{stock}/prediction",
+                "ema_20_50": f"/download_chart/{stock}/ema_20_50",
+                "ema_100_200": f"/download_chart/{stock}/ema_100_200",
             },
-            "next_60_days": future_df.to_dict(orient="records")[:10],  # show sample
         }
 
     except Exception as e:
@@ -135,8 +118,13 @@ def analyze_stock(stock: str = Form(...)):
 
 @app.get("/download_chart/{stock}/{chart_type}")
 def download_chart(stock: str, chart_type: str):
-    chart_file = f"{CHART_DIR}/{stock}_{chart_type}.png"
-    if not os.path.exists(chart_file):
-        return JSONResponse(status_code=404, content={"error": "Chart not found"})
-    return FileResponse(chart_file, media_type="image/png", filename=f"{stock}_{chart_type}.png")
+    chart_path = f"charts/{stock}_{chart_type}.png"
+    if os.path.exists(chart_path):
+        return FileResponse(chart_path, media_type="image/png", filename=os.path.basename(chart_path))
+    return JSONResponse(status_code=404, content={"error": "Chart not found"})
 
+
+# Run on Render / localhost
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app:app", host="0.0.0.0", port=8000)

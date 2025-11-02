@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Form
 from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 import numpy as np
 import pandas as pd
@@ -9,6 +10,15 @@ from keras.models import load_model
 import os
 
 app = FastAPI(title="Stock Price Prediction API", version="3.1")
+
+# === Enable CORS ===
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # You can specify domains instead of "*" for security
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # === Load trained LSTM model ===
 MODEL_PATH = "stock_dl_model.h5"

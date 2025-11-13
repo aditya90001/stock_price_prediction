@@ -16,7 +16,7 @@ app = FastAPI(title="📈 Stock Price Prediction API", version="4.0")
 # === Enable CORS ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # Allow all origins
+    allow_origins=["*"],        # Allow all origins (for frontend)
     allow_credentials=True,
     allow_methods=["*"],        # Allow all HTTP methods (GET, POST, etc.)
     allow_headers=["*"],        # Allow all headers
@@ -76,24 +76,32 @@ def analyze_stock(stock: str = Form(...)):
         for _ in range(60):
             next_pred = model.predict(current_input, verbose=0)[0, 0]
             future_predictions.append(next_pred)
-            current_input = np.append(current_input[:, 1:, :],
-                                      np.array([[next_pred]]).reshape(1, 1, 1),
-                                      axis=1)
+            current_input = np.append(
+                current_input[:, 1:, :],
+                np.array([[next_pred]]).reshape(1, 1, 1),
+                axis=1
+            )
 
         future_predictions = scaler.inverse_transform(np.array(future_predictions).reshape(-1, 1))
 
-        # --- Prepare DataFrame ---
+        # ✅ --- Prepare DataFrame (Fixed Indentation Issue) ---
         last_date = data.index[-1]
         future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=60)
-        pred_df = pd.DataFrame({'Date': future_dates, 'Predicted_Close': future_predictions.flatten()})
-        pred_df.set_index('Date', inplace=True)
+
+        # ✅ Create prediction DataFrame (Date as normal column)
+        pred_df = pd.DataFrame({
+            'Date': future_dates,
+            'Predicted_Close': future_predictions.flatten()
+        })
+
+        # ✅ Save CSV with Date as normal column (frontend fix)
         csv_path = f"charts/{stock}_predictions.csv"
-        pred_df.to_csv(csv_path)
+        pred_df.to_csv(csv_path, index=False)
 
         # === Chart 1: Prediction Chart ===
         plt.figure(figsize=(10, 6))
         plt.plot(data['Close'], label='Historical Close', color='blue')
-        plt.plot(pred_df['Predicted_Close'], label='Predicted Next 60 Days', color='orange')
+        plt.plot(pred_df['Date'], pred_df['Predicted_Close'], label='Predicted Next 60 Days', color='orange')
         plt.title(f'{stock} Stock Price Prediction (Next 60 Days)')
         plt.legend()
         plt.grid(True)
@@ -143,14 +151,12 @@ def analyze_stock(stock: str = Form(...)):
         plt.plot(data['Close'], label='Close Price', color='blue', alpha=0.7)
         plt.plot(data['EMA_20'], label='EMA 20', color='green', alpha=0.8)
         plt.plot(data['EMA_50'], label='EMA 50', color='red', alpha=0.8)
-
         plt.scatter(data.index[data['Crossover'] == 1],
                     data['Close'][data['Crossover'] == 1],
                     label='Buy Signal', marker='^', color='green', s=100)
         plt.scatter(data.index[data['Crossover'] == -1],
                     data['Close'][data['Crossover'] == -1],
                     label='Sell Signal', marker='v', color='red', s=100)
-
         plt.title(f"{stock} - EMA 20/50 Crossover Buy & Sell Signals")
         plt.legend()
         plt.grid(True)

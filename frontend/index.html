@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>📈 Stock Price Prediction</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background: #f8fafc;
+      font-family: 'Poppins', sans-serif;
+      padding: 20px;
+    }
+    .card {
+      border-radius: 15px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      margin-top: 20px;
+    }
+    img {
+      width: 100%;
+      border-radius: 10px;
+      margin-top: 15px;
+    }
+    .table-container {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container text-center">
+    <h1 class="mb-4">🚀 Stock Price Prediction Dashboard</h1>
+    <form id="stockForm" class="d-flex justify-content-center mb-3">
+      <input type="text" id="stockInput" class="form-control w-50" placeholder="Enter Stock Symbol (e.g. AAPL, TCS.NS)" required>
+      <button type="submit" class="btn btn-primary ms-2">Analyze</button>
+    </form>
+
+    <div id="result"></div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

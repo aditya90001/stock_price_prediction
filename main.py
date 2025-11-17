@@ -203,4 +203,4 @@ def download_chart(stock: str, chart_type: str):
 # === Render Entry Point ===
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("app:app", host="0.0.0.0", port=port)
+    uvicorn.run("app:main", host="0.0.0.0", port=port)

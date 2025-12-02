@@ -60,7 +60,8 @@ def analyze_stock(stock: str = Form(...)):
             print("✅ Model loaded successfully.")
 
         # --- Fetch Stock Data ---
-        data = yf.download(stock, period="2y")
+        data = yf.download(stock, period="2y", threads=False, auto_adjust=True)
+
         if data.empty:
             return JSONResponse(status_code=400, content={"error": "Invalid stock symbol or no data found."})
 
@@ -202,5 +203,6 @@ def download_chart(stock: str, chart_type: str):
 
 # === Render Entry Point ===
 if __name__ == "__main__":
+    import uvicorn
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("app:main", host="0.0.0.0", port=port)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

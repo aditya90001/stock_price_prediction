@@ -1,3 +1,4 @@
+# API https://stock-price-prediction-7.onrender.com
 # 📈 Stock Price Prediction using LSTM (FastAPI)
 
 This project is an **end-to-end stock price prediction system** built using **LSTM (Long Short-Term Memory)** neural networks. It is trained on the **POWERGRID stock dataset** and deployed using **FastAPI**. The application fetches real-time stock data from **Yahoo Finance API**, predicts the **next 60 days of stock prices**, and visualizes **EMA, SMA, and crossover trading signals**.

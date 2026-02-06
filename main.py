@@ -58,10 +58,10 @@ def analyze_stock(stock: str = Form(...)):
         if model is None:
             model = load_model(MODEL_PATH)
 
-        # Fetch data
+        # Fetch stock data
         data = yf.download(stock, period="2y", auto_adjust=True, threads=False)
         if data.empty:
-            return JSONResponse(status_code=400, content={"error": "Invalid stock symbol"})
+            return JSONResponse(status_code=400, content={"error": "Invalid stock symbol or no data found"})
 
         data = data[['Close']]
 
@@ -69,7 +69,7 @@ def analyze_stock(stock: str = Form(...)):
         scaler = MinMaxScaler()
         scaled_data = scaler.fit_transform(data)
 
-        # Prepare input
+        # Prepare input (last 60 days)
         last_60_days = scaled_data[-60:]
         current_input = np.array([last_60_days])
 
@@ -88,10 +88,11 @@ def analyze_stock(stock: str = Form(...)):
             np.array(future_predictions).reshape(-1, 1)
         )
 
-        # 🔥 FIXED PART: use CURRENT DATE + BUSINESS DAYS
-        today = pd.Timestamp.today().normalize()
+        # 🔥 CORRECT DATE FIX (IMPORTANT)
+        last_market_date = data.index[-1]
+
         future_dates = pd.bdate_range(
-            start=today + pd.Timedelta(days=1),
+            start=last_market_date + pd.Timedelta(days=1),
             periods=60
         )
 
@@ -107,8 +108,9 @@ def analyze_stock(stock: str = Form(...)):
 
         # === Prediction Chart ===
         plt.figure(figsize=(10, 6))
-        plt.plot(data['Close'], label="Historical Close")
-        plt.plot(pred_df['Date'], pred_df['Predicted_Close'], label="Predicted")
+        plt.plot(data.index, data['Close'], label="Historical Close")
+        plt.plot(pred_df['Date'], pred_df['Predicted_Close'], label="Predicted (Next 60 Days)")
+        plt.axvline(last_market_date, color="gray", linestyle="--", label="Last Market Date")
         plt.legend()
         plt.grid()
         plt.tight_layout()
@@ -117,6 +119,7 @@ def analyze_stock(stock: str = Form(...)):
 
         return {
             "message": f"✅ Analysis complete for {stock}",
+            "last_market_date": str(last_market_date.date()),
             "data_preview": pred_df.head(10).to_dict(orient="records"),
             "charts": {
                 "prediction": f"/download_chart/{stock}/prediction"
@@ -147,3 +150,4 @@ def download_chart(stock: str, chart_type: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
+

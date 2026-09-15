@@ -1,4 +1,5 @@
 API LINK=https://stock-price-prediction-7.onrender.com/docs#/default/analyze_stock_analyze_stock_post
+looda project
 # 📈 AI Stock Price Prediction Platform
 
 A production-ready stock forecasting application built using Deep Learning, FastAPI, and Streamlit. The platform predicts the next 60 trading-day closing prices for stocks using a pre-trained LSTM model and provides interactive visualizations through a modern web interface.
